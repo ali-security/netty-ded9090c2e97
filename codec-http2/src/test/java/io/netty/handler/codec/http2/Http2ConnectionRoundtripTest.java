@@ -1211,6 +1211,8 @@ public class Http2ConnectionRoundtripTest {
                         .server(true)
                         .frameListener(serverFrameCountDown)
                         .validateHeaders(false)
+                        .initialSettings(new Http2Settings()
+                                .maxConcurrentStreams(Integer.MAX_VALUE))
                         .build());
                 p.addLast(serverHandlerRef.get());
                 serverInitLatch.countDown();
