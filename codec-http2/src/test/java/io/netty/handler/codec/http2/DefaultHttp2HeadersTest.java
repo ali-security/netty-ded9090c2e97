@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Map.Entry;
 
@@ -55,6 +56,32 @@ public class DefaultHttp2HeadersTest {
                 new DefaultHttp2Headers().add(StringUtil.EMPTY_STRING, "foo");
             }
         });
+    }
+
+    @ParameterizedTest
+    @ValueSource(chars = {'\0', '\n', '\r'})
+    public void headerValueValidationIsEnabledByDefault(final char illegalChar) {
+        assertThrows(IllegalArgumentException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                new DefaultHttp2Headers().add("headername", "fo" + illegalChar + "o");
+            }
+        });
+    }
+
+    @Test
+    public void headerValueValidationAppliesWhenCopyingFromNonValidatingHeaders() {
+        Http2Headers source = new DefaultHttp2Headers(true, false, 16);
+        source.add("headername", "fo\r\no");
+        try {
+            new DefaultHttp2Headers().add(source);
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            // expected
+        }
+        // Copying into a headers instance that does not validate values is still allowed.
+        Http2Headers copy = new DefaultHttp2Headers(true, false, 16).add(source);
+        assertEquals("fo\r\no", copy.get("headername").toString());
     }
 
     @Test
