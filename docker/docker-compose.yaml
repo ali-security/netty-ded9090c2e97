@@ -16,6 +16,8 @@ services:
       - GPG_PASSPHRASE
       - GPG_PRIVATE_KEY
       - MAVEN_OPTS
+      - TEST_FILTER
+      - CI
     volumes:
       - ~/.ssh:/root/.ssh
       - ~/.gnupg:/root/.gnupg
@@ -29,10 +31,47 @@ services:
 
   build:
     <<: *common
+    # host networking exposes an IPv6 + multicast capable interface to the multicast IPv6 tests
+    network_mode: host
     command: '/bin/bash -cl "
-      ./mvnw -B -ntp clean install -Dio.netty.testsuite.badHost=netty.io -Dtcnative.classifier=linux-x86_64-fedora && 
+      ./mvnw -B -ntp clean install -pl transport-native-unix-common,transport-classes-epoll,transport-native-epoll -am -DskipTests=true -Dtcnative.classifier=linux-x86_64-fedora &&
+      ./mvnw -B -ntp install -pl common,buffer,resolver,transport,codec,transport-native-unix-common,codec-http,transport-sctp,transport-udt,transport-classes-epoll,transport-native-unix-common-tests,transport-native-epoll -Dio.netty.testsuite.badHost=netty.io -Dtcnative.classifier=linux-x86_64-fedora $${TEST_FILTER:+-Dtest=$$TEST_FILTER -Dsurefire.failIfNoSpecifiedTests=false} &&
       cd testsuite-shading &&
       ../mvnw -B -ntp integration-test failsafe:verify -Dtcnative.classifier=linux-x86_64-fedora
+    "'
+
+  build-handler-boringssl:
+    <<: *common
+    command: '/bin/bash -cl "
+      ./mvnw -B -ntp clean install -pl handler -am -DskipTests=true -Dxml.skip=true &&
+      ./mvnw -B -ntp -Pboringssl install -pl handler -Dio.netty.testsuite.badHost=netty.io -Dxml.skip=true $${TEST_FILTER:+-Dtest=$$TEST_FILTER -Dsurefire.failIfNoSpecifiedTests=false}
+    "'
+
+  build-codecs:
+    <<: *common
+    # host networking exposes an IPv6 + multicast capable interface to the multicast IPv6 tests
+    network_mode: host
+    command: '/bin/bash -cl "
+      ./mvnw -B -ntp clean install -pl codec-dns,codec-haproxy,codec-http2,codec-memcache,codec-mqtt,codec-redis,codec-smtp,codec-socks,codec-stomp,codec-xml,resolver-dns,handler-proxy,handler-ssl-ocsp -am -DskipTests=true -Dtcnative.classifier=linux-x86_64-fedora &&
+      ./mvnw -B -ntp -Pboringssl install -pl codec-dns,codec-haproxy,codec-http2,codec-memcache,codec-mqtt,codec-redis,codec-smtp,codec-socks,codec-stomp,codec-xml,resolver-dns,handler-proxy,handler-ssl-ocsp -Dio.netty.testsuite.badHost=netty.io $${TEST_FILTER:+-Dtest=$$TEST_FILTER -Dsurefire.failIfNoSpecifiedTests=false}
+    "'
+
+  build-testsuites-extra:
+    <<: *common
+    # host networking exposes an IPv6 + multicast capable interface to the multicast IPv6 tests
+    network_mode: host
+    command: '/bin/bash -cl "
+      ./mvnw -B -ntp clean install -pl testsuite-native,testsuite-http2,testsuite-autobahn,testsuite-osgi,transport-blockhound-tests -am -DskipTests=true -Dtcnative.classifier=linux-x86_64-fedora &&
+      ./mvnw -B -ntp -Pboringssl install -pl testsuite-native,testsuite-http2,testsuite-autobahn,testsuite-osgi,transport-blockhound-tests -Dio.netty.testsuite.badHost=netty.io $${TEST_FILTER:+-Dtest=$$TEST_FILTER -Dsurefire.failIfNoSpecifiedTests=false}
+    "'
+
+  build-testsuite:
+    <<: *common
+    # host networking exposes an IPv6 + multicast capable interface to the multicast IPv6 tests
+    network_mode: host
+    command: '/bin/bash -cl "
+      ./mvnw -B -ntp clean install -pl testsuite -am -DskipTests=true -Dtcnative.classifier=linux-x86_64-fedora &&
+      ./mvnw -B -ntp test -pl testsuite -Dio.netty.testsuite.badHost=netty.io -Dtcnative.classifier=linux-x86_64-fedora $${TEST_FILTER:+-Dtest=$$TEST_FILTER -Dsurefire.failIfNoSpecifiedTests=false}
     "'
 
   deploy:
@@ -47,7 +86,7 @@ services:
       - ~/.m2:/root/.m2
       - ~/local-staging:/root/local-staging
       - ..:/code
-    command: /bin/bash -cl "./mvnw -B -ntp clean package org.sonatype.plugins:nexus-staging-maven-plugin:deploy -DaltStagingDirectory=/root/local-staging -DskipRemoteStaging=true -DskipTests=true"
+    command: /bin/bash -cl "./mvnw -B -ntp clean package deploy:deploy -DaltDeploymentRepository=local-staging::default::file:///root/local-staging -DskipTests=true"
 
   stage-release:
     <<: *common
@@ -65,6 +104,13 @@ services:
   build-leak-boringssl-static:
     <<: *common
     command: /bin/bash -cl "./mvnw -B -ntp -Pboringssl,leak clean install -Dio.netty.testsuite.badHost=netty.io -Dxml.skip=true"
+
+  build-codec-http2-leak-boringssl-static:
+    <<: *common
+    command: '/bin/bash -cl "
+      ./mvnw -B -ntp clean install -pl codec-http2 -am -DskipTests=true -Dxml.skip=true &&
+      ./mvnw -B -ntp -Pboringssl,leak install -pl codec-http2 -Dio.netty.testsuite.badHost=netty.io -Dxml.skip=true $${TEST_FILTER:+-Dtest=$$TEST_FILTER -Dsurefire.failIfNoSpecifiedTests=false}
+    "'
 
   build-leak-adaptive:
     <<: *common
